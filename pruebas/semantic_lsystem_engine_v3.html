@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>Semantic L-System Engine</title>
+
+
+<style>
+
+
+*{
+box-sizing:border-box;
+}
+
+
+
+body{
+
+margin:0;
+height:100vh;
+display:flex;
+font-family:Arial;
+
+}
+
+
+
+#panel{
+
+width:420px;
+padding:15px;
+background:#eee;
+overflow:auto;
+
+}
+
+
+
+#main{
+
+flex:1;
+padding:20px;
+overflow:auto;
+
+}
+
+
+
+input,
+textarea,
+button,
+select{
+
+width:100%;
+box-sizing:border-box;
+padding:8px;
+margin-top:8px;
+
+}
+
+
+
+textarea{
+
+height:250px;
+
+}
+
+
+
+.player{
+
+display:flex;
+gap:6px;
+
+}
+
+
+
+.player button{
+
+height:42px;
+font-size:18px;
+border-radius:8px;
+border:1px solid #888;
+
+transition:
+transform .12s,
+box-shadow .12s;
+
+}
+
+
+
+.player button:hover{
+
+transform:translateY(-2px);
+
+}
+
+
+
+.player button:active{
+
+transform:scale(.9);
+
+box-shadow:
+inset 0 0 8px #555;
+
+}
+
+
+
+.step{
+
+background:#ddd;
+
+}
+
+
+
+.play{
+
+background:#4caf50;
+color:white;
+
+}
+
+
+
+.stop{
+
+background:#e53935;
+color:white;
+
+}
+
+
+
+pre{
+
+background:#fafafa;
+padding:15px;
+border:1px solid #ccc;
+white-space:pre-wrap;
+
+}
+
+
+
+ul{
+
+list-style:none;
+
+}
+
+
+
+li{
+
+margin:5px;
+
+}
+
+
+
+.concept{
+
+color:#1565c0;
+font-weight:bold;
+
+}
+
+
+
+.text{
+
+color:#555;
+
+}
+
+
+
+</style>
+
+</head>
+
+
+<body>
+
+
+
+<div id="panel">
+
+
+<h2>
+Semantic L-System
+</h2>
+
+
+<label>Axioma</label>
+
+<input id="axiom"
+value="[YO] [CAMINO]">
+
+
+<label>Reglas</label>
+
+<textarea id="rules">
+
+YO =
+"yo recuerdo [MEMORIA]"
+
+MEMORIA =
+"el perfume [INFANCIA] de los jazmines en [MEMORIA]"
+
+INFANCIA =
+"de los veranos en el patio"
+
+CAMINO =
+"camino hacia [DESTINO]"
+
+DESTINO =
+"el horizonte"
+
+</textarea>
+
+
+
+<label>Generaciones</label>
+
+<input 
+id="maxGeneration"
+type="number"
+value="8">
+
+
+
+<div class="player">
+
+
+<button class="step"
+title="Primera generación"
+onclick="first()">
+⏮
+</button>
+
+
+<button class="step"
+title="Generación anterior"
+onclick="prev()">
+◀
+</button>
+
+
+<button class="play"
+title="Reproducir generaciones"
+onclick="play()">
+▶
+</button>
+
+
+<button class="stop"
+title="Detener"
+onclick="stopPlay()">
+⏹
+</button>
+
+
+<button class="step"
+title="Siguiente generación"
+onclick="next()">
+▶
+</button>
+
+
+<button class="step"
+title="Última generación"
+onclick="last()">
+⏭
+</button>
+
+
+</div>
+
+
+
+<button onclick="refresh()">
+Actualizar
+</button>
+
+
+
+</div>
+
+
+
+
+
+
+
+<div id="main">
+
+
+<h2>
+Generación:
+<span id="gen"></span>
+</h2>
+
+
+<h2>
+Texto
+</h2>
+
+
+<pre id="result"></pre>
+
+
+
+<h2>
+Árbol semántico
+</h2>
+
+
+<div id="tree"></div>
+
+
+
+</div>
+
+
+
+
+
+
+
+
+
+<script>
+
+
+
+
+
+// ==================================================
+// MOTOR L-SYSTEM
+// ==================================================
+
+
+
+const engine={
+
+
+generation:0,
+
+maxGeneration:8,
+
+current:"",
+
+history:[],
+
+
+timer:null
+
+
+};
+
+
+
+
+
+let rules={};
+
+
+
+
+
+
+
+function parseRules(text){
+
+
+let result={};
+
+
+let current=null;
+
+
+let buffer="";
+
+
+
+for(let line of text.split("\n")){
+
+
+line=line.trim();
+
+
+
+if(!line)
+continue;
+
+
+
+if(line.includes("=")){
+
+
+
+if(current){
+
+result[current]=clean(buffer);
+
+}
+
+
+
+let p=line.split("=");
+
+
+current=p[0].trim();
+
+
+buffer=
+p.slice(1)
+.join("=")
+.trim();
+
+
+}
+else{
+
+
+buffer+=" "+line;
+
+
+}
+
+}
+
+
+
+if(current){
+
+result[current]=clean(buffer);
+
+}
+
+
+return result;
+
+}
+
+
+
+
+
+
+
+function clean(t){
+
+
+t=t.trim();
+
+
+if(
+t.startsWith('"')
+&&
+t.endsWith('"')
+){
+
+t=t.substring(
+1,
+t.length-1
+);
+
+}
+
+
+return t;
+
+}
+
+
+
+
+
+
+
+function applyRules(text){
+
+
+return text.replace(
+/\[([^\]]+)\]/g,
+
+(_,key)=>{
+
+return rules[key]
+??
+`[${key}]`;
+
+}
+
+);
+
+}
+
+
+
+
+
+
+
+function generateStep(){
+
+
+engine.current =
+applyRules(
+engine.current
+);
+
+}
+
+
+
+
+
+function resetEngine(){
+
+
+rules=
+parseRules(
+document
+.getElementById("rules")
+.value
+);
+
+
+
+engine.maxGeneration=
+Number(
+document
+.getElementById("maxGeneration")
+.value
+);
+
+
+
+engine.generation=0;
+
+
+engine.current=
+document
+.getElementById("axiom")
+.value;
+
+
+
+engine.history=[
+engine.current
+];
+
+
+render();
+
+}
+
+
+
+
+
+function next(){
+
+
+
+if(engine.generation <
+engine.maxGeneration){
+
+
+generateStep();
+
+
+engine.generation++;
+
+
+engine.history.push(
+engine.current
+);
+
+
+render();
+
+
+}
+
+
+}
+
+
+
+
+
+
+function prev(){
+
+
+if(engine.generation>0){
+
+
+engine.generation--;
+
+
+engine.current=
+engine.history[
+engine.generation
+];
+
+
+render();
+
+
+}
+
+
+}
+
+
+
+
+function first(){
+
+
+engine.generation=0;
+
+
+engine.current=
+engine.history[0];
+
+
+render();
+
+
+}
+
+
+
+
+function last(){
+
+
+while(
+engine.generation <
+engine.maxGeneration
+){
+
+next();
+
+}
+
+
+}
+
+
+
+
+
+
+function play(){
+
+
+if(engine.timer)
+return;
+
+
+
+engine.timer=setInterval(()=>{
+
+
+if(
+engine.generation >=
+engine.maxGeneration
+){
+
+stopPlay();
+
+return;
+
+}
+
+
+next();
+
+
+},800);
+
+
+
+}
+
+
+
+function stopPlay(){
+
+
+clearInterval(
+engine.timer
+);
+
+
+engine.timer=null;
+
+
+}
+
+
+
+
+
+function refresh(){
+
+
+stopPlay();
+
+
+resetEngine();
+
+
+}
+
+
+
+
+
+
+
+// ==================================================
+// PARSER SEMANTICO
+// ==================================================
+
+
+
+function semanticNode(text){
+
+
+let root={
+
+type:"root",
+
+children:[]
+
+};
+
+
+
+function parseSegment(segment){
+
+
+let nodes=[];
+
+
+let regex=/\[([^\]]+)\]/g;
+
+
+let last=0;
+
+
+let match;
+
+
+
+while(
+(match=regex.exec(segment))
+){
+
+
+let before =
+segment.substring(
+last,
+match.index
+);
+
+
+
+if(before.trim()){
+
+
+nodes.push({
+
+type:"text",
+
+value:before
+
+});
+
+
+}
+
+
+
+nodes.push({
+
+type:"concept",
+
+name:match[1].trim(),
+
+children:[]
+
+
+});
+
+
+
+last =
+regex.lastIndex;
+
+
+}
+
+
+
+let after =
+segment.substring(last);
+
+
+
+if(after.trim()){
+
+
+nodes.push({
+
+type:"text",
+
+value:after
+
+
+});
+
+
+}
+
+
+
+return nodes;
+
+
+}
+
+
+
+root.children =
+parseSegment(text);
+
+
+
+return root;
+
+
+}
+
+
+
+function textOf(node){
+
+
+if(node.type==="text")
+
+return node.value;
+
+
+
+return node.children
+.map(textOf)
+.join("");
+
+}
+
+
+
+function treeHTML(node){
+
+
+
+if(node.type==="root"){
+
+
+return node.children
+.map(treeHTML)
+.join("");
+
+}
+
+
+
+let html=
+`
+<li class="${node.type}">
+`;
+
+
+
+if(node.type==="concept"){
+
+
+html +=
+"<b>"
++
+node.name
++
+"</b>";
+
+
+}
+else{
+
+
+html +=
+'"'
++
+node.value.trim()
++
+'"';
+
+
+}
+
+
+
+if(node.children &&
+node.children.length){
+
+
+html+="<ul>";
+
+
+
+node.children.forEach(c=>{
+
+
+html+=treeHTML(c);
+
+
+});
+
+
+
+html+="</ul>";
+
+}
+
+
+
+html+="</li>";
+
+
+
+return html;
+
+
+}
+
+
+
+
+
+function render(){
+
+
+
+document
+.getElementById("gen")
+.textContent=
+engine.generation;
+
+
+
+let tree=
+semanticNode(
+engine.current
+);
+
+
+
+document
+.getElementById("result")
+.textContent=
+textOf(tree)
+.replace(/\s+/g," ")
+.trim();
+
+
+
+document
+.getElementById("tree")
+.innerHTML=
+"<ul>"
++
+treeHTML(tree)
++
+"</ul>";
+
+}
+
+
+
+resetEngine();
+
+
+
+</script>
+
+
+</body>
+
+</html>

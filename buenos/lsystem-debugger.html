@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>L-System Debugger</title>
+        <style>
+            * {
+                box-sizing: border-box;
+                font-family: Arial, sans-serif;
+            }
+            body {
+                margin: 0;
+                height: 100vh;
+                display: flex;
+                overflow: hidden;
+            }
+            #left {
+                width: 380px;
+                background: #f4f4f4;
+                border-right: 1px solid #ccc;
+                padding: 12px;
+                overflow: auto;
+            }
+            #right {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+            }
+            label {
+                display: block;
+                font-weight: bold;
+                margin-top: 8px;
+            }
+            input,
+            textarea {
+                width: 100%;
+                padding: 6px;
+            }
+            textarea {
+                min-height: 120px;
+            }
+            button {
+                margin: 2px;
+                padding: 8px;
+            }
+            #canvas {
+                flex: 1;
+                background: white;
+                display: block;
+            }
+            #debugInfo,
+            #cursorView {
+                font-size: 12px;
+                white-space: pre-wrap;
+                border: 1px solid #ddd;
+                padding: 6px;
+                background: white;
+                margin-top: 6px;
+            }
+            .controls {
+                display: flex;
+                flex-wrap: wrap;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="left">
+            <h2>L-System Debugger</h2>
+
+            <label>Axioma</label>
+            <input id="axiom" value="X" />
+
+            <label>Reglas</label>
+            <textarea id="rules">
+X=F[+X][-X]FX
+F=FF</textarea
+            >
+
+            <label>Iteraciones</label>
+            <input id="iterations" type="number" value="6" min="0" max="10" />
+
+            <label>Ángulo</label>
+            <input id="angle" type="number" value="25" />
+
+            <label>Longitud segmento</label>
+            <input id="step" type="number" value="5" />
+
+            <button id="generateBtn">Generar</button>
+            <button id="exportBtn">Exportar PNG</button>
+
+            <h3>Debugger</h3>
+
+            <div class="controls">
+                <button id="firstBtn">|&lt;&lt;</button>
+                <button id="prevBtn">&lt;</button>
+                <button id="playBtn">Play</button>
+                <button id="pauseBtn">Pause</button>
+                <button id="nextBtn">&gt;</button>
+                <button id="lastBtn">&gt;&gt;|</button>
+            </div>
+
+            <div id="debugInfo"></div>
+            <div id="cursorView"></div>
+        </div>
+
+        <div id="right">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <script>
+            const canvas = document.getElementById("canvas");
+            const ctx = canvas.getContext("2d");
+
+            function resizeCanvas() {
+                canvas.width = canvas.parentElement.clientWidth;
+                canvas.height = canvas.parentElement.clientHeight;
+            }
+            window.addEventListener("resize", resizeCanvas);
+            resizeCanvas();
+
+            let zoom = 1,
+                offsetX = 0,
+                offsetY = 0;
+            let dragging = false,
+                lastX = 0,
+                lastY = 0;
+
+            canvas.addEventListener("mousedown", (e) => {
+                dragging = true;
+                lastX = e.clientX;
+                lastY = e.clientY;
+            });
+
+            window.addEventListener("mouseup", () => (dragging = false));
+
+            window.addEventListener("mousemove", (e) => {
+                if (!dragging) return;
+                offsetX += e.clientX - lastX;
+                offsetY += e.clientY - lastY;
+                lastX = e.clientX;
+                lastY = e.clientY;
+                updateDebuggerView();
+            });
+
+            canvas.addEventListener("wheel", (e) => {
+                e.preventDefault();
+                zoom *= e.deltaY < 0 ? 1.1 : 0.9;
+                updateDebuggerView();
+            });
+
+            function parseRules(text) {
+                const rules = {};
+                text.split("\n").forEach((line) => {
+                    line = line.trim();
+                    if (!line) return;
+                    const p = line.split("=");
+                    if (p.length === 2) rules[p[0].trim()] = p[1].trim();
+                });
+                return rules;
+            }
+
+            function expand(axiom, rules, it) {
+                let cur = axiom;
+                for (let i = 0; i < it; i++) {
+                    let next = "";
+                    for (const c of cur) next += rules[c] || c;
+                    cur = next;
+                }
+                return cur;
+            }
+
+            class LSystemDebugger {
+                constructor(str, angleDeg, step) {
+                    this.string = str;
+                    this.angleDeg = angleDeg;
+                    this.step = step;
+                    this.currentStep = 0;
+                    this.states = [];
+                    this.buildStates();
+                }
+
+                buildStates() {
+                    let x = 0,
+                        y = 0;
+                    let angle = -Math.PI / 2;
+                    const a = (this.angleDeg * Math.PI) / 180;
+                    const stack = [];
+                    const segs = [];
+
+                    this.states = [
+                        {
+                            cursor: 0,
+                            x,
+                            y,
+                            angle,
+                            symbol: "",
+                            stack: [],
+                            segments: [],
+                        },
+                    ];
+
+                    for (let i = 0; i < this.string.length; i++) {
+                        const s = this.string[i];
+
+                        switch (s) {
+                            case "F": {
+                                const nx = x + Math.cos(angle) * this.step;
+                                const ny = y + Math.sin(angle) * this.step;
+                                segs.push({ x1: x, y1: y, x2: nx, y2: ny });
+                                x = nx;
+                                y = ny;
+                                break;
+                            }
+                            case "G":
+                                x += Math.cos(angle) * this.step;
+                                y += Math.sin(angle) * this.step;
+                                break;
+                            case "+":
+                                angle += a;
+                                break;
+                            case "-":
+                                angle -= a;
+                                break;
+                            case "[":
+                                stack.push({ x, y, angle });
+                                break;
+                            case "]":
+                                if (stack.length) {
+                                    const st = stack.pop();
+                                    x = st.x;
+                                    y = st.y;
+                                    angle = st.angle;
+                                }
+                                break;
+                        }
+
+                        this.states.push({
+                            cursor: i + 1,
+                            symbol: s,
+                            x,
+                            y,
+                            angle,
+                            stack: JSON.parse(JSON.stringify(stack)),
+                            segments: JSON.parse(JSON.stringify(segs)),
+                        });
+                    }
+                }
+
+                getCurrentState() {
+                    return this.states[this.currentStep];
+                }
+                next() {
+                    if (this.currentStep < this.states.length - 1)
+                        this.currentStep++;
+                }
+                prev() {
+                    if (this.currentStep > 0) this.currentStep--;
+                }
+                first() {
+                    this.currentStep = 0;
+                }
+                last() {
+                    this.currentStep = this.states.length - 1;
+                }
+                totalSteps() {
+                    return this.states.length;
+                }
+            }
+
+            let debuggerInstance = null;
+            let currentString = "";
+
+            function drawState(state) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                ctx.save();
+                ctx.translate(
+                    canvas.width / 2 + offsetX,
+                    canvas.height + offsetY,
+                );
+                ctx.scale(zoom, zoom);
+
+                ctx.beginPath();
+                for (const seg of state.segments) {
+                    ctx.moveTo(seg.x1, seg.y1);
+                    ctx.lineTo(seg.x2, seg.y2);
+                }
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            function updateDebuggerView() {
+                if (!debuggerInstance) return;
+
+                const st = debuggerInstance.getCurrentState();
+                drawState(st);
+
+                document.getElementById("debugInfo").textContent =
+                    `Paso: ${debuggerInstance.currentStep}/${debuggerInstance.totalSteps() - 1}
+                        Símbolo: ${st.symbol || "-"}
+                        Posición: (${st.x.toFixed(1)}, ${st.y.toFixed(1)})
+                        Stack: ${st.stack.length}`;
+
+                const idx = Math.max(0, st.cursor - 1);
+                const before = currentString.substring(
+                    Math.max(0, idx - 20),
+                    idx,
+                );
+                const cur = currentString[idx] || "";
+                const after = currentString.substring(idx + 1, idx + 21);
+
+                document.getElementById("cursorView").innerHTML =
+                    `...${before}<mark>${cur}</mark>${after}...`;
+            }
+
+            function generate() {
+                const ax = document.getElementById("axiom").value;
+                const rules = parseRules(
+                    document.getElementById("rules").value,
+                );
+                const it = Number(document.getElementById("iterations").value);
+
+                currentString = expand(ax, rules, it);
+
+                debuggerInstance = new LSystemDebugger(
+                    currentString,
+                    Number(document.getElementById("angle").value),
+                    Number(document.getElementById("step").value),
+                );
+
+                updateDebuggerView();
+            }
+
+            document.getElementById("generateBtn").onclick = generate;
+
+            document.getElementById("firstBtn").onclick = () => {
+                debuggerInstance.first();
+                updateDebuggerView();
+            };
+            document.getElementById("prevBtn").onclick = () => {
+                debuggerInstance.prev();
+                updateDebuggerView();
+            };
+            document.getElementById("nextBtn").onclick = () => {
+                debuggerInstance.next();
+                updateDebuggerView();
+            };
+            document.getElementById("lastBtn").onclick = () => {
+                debuggerInstance.last();
+                updateDebuggerView();
+            };
+
+            let timer = null;
+
+            document.getElementById("playBtn").onclick = () => {
+                if (timer || !debuggerInstance) return;
+                timer = setInterval(() => {
+                    debuggerInstance.next();
+                    updateDebuggerView();
+                    if (
+                        debuggerInstance.currentStep >=
+                        debuggerInstance.totalSteps() - 1
+                    ) {
+                        clearInterval(timer);
+                        timer = null;
+                    }
+                }, 30);
+            };
+
+            document.getElementById("pauseBtn").onclick = () => {
+                clearInterval(timer);
+                timer = null;
+            };
+
+            document.getElementById("exportBtn").onclick = () => {
+                const a = document.createElement("a");
+                a.download = "lsystem.png";
+                a.href = canvas.toDataURL();
+                a.click();
+            };
+
+            generate();
+        </script>
+    </body>
+</html>

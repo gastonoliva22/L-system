@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Semantic L-System Writer</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;display:flex;height:100vh}
+#left{width:420px;padding:15px;background:#f4f4f4;overflow:auto;border-right:1px solid #ccc}
+#right{flex:1;padding:15px;overflow:auto}
+textarea,input{width:100%;box-sizing:border-box;margin-top:4px}
+textarea{min-height:120px}
+button{padding:10px;margin-top:8px}
+pre{white-space:pre-wrap;background:#fafafa;border:1px solid #ddd;padding:10px}
+.tree ul{list-style:none;padding-left:20px}
+.tree li{margin:4px 0}
+</style>
+</head>
+<body>
+
+<div id="left">
+<h2>Semantic L-System Writer</h2>
+
+<label>Axioma</label>
+<input id="axiom" value="YO">
+
+<label>Reglas (una por línea)</label>
+<textarea id="rules">YO=YO [MEMORIA] CAMINO
+MEMORIA=INFANCIA [JARDIN] AUSENCIA
+CAMINO=CAMINO HORIZONTE</textarea>
+
+<label>Iteraciones</label>
+<input id="iterations" type="number" value="2" min="0" max="8">
+
+<button onclick="generate()">Generar</button>
+</div>
+
+<div id="right">
+<h3>Cadena expandida</h3>
+<pre id="expanded"></pre>
+
+<h3>Texto generado</h3>
+<pre id="text"></pre>
+
+<h3>Grafo semántico</h3>
+<div id="graph" class="tree"></div>
+</div>
+
+<script>
+function parseRules(text){
+    const rules={};
+    text.split("\\n").forEach(line=>{
+        line=line.trim();
+        if(!line) return;
+        const p=line.split("=");
+        if(p.length===2){
+            rules[p[0].trim()]=p[1].trim();
+        }
+    });
+    return rules;
+}
+
+function expand(axiom,rules,n){
+    let current=axiom;
+    for(let i=0;i<n;i++){
+        const tokens=current.match(/\\[|\\]|[^\\s\\[\\]]+/g)||[];
+        const next=[];
+        for(const t of tokens){
+            next.push(rules[t] || t);
+        }
+        current=next.join(" ");
+    }
+    return current;
+}
+
+function generateText(expanded){
+    const tokens=expanded.match(/\\[|\\]|[^\\s\\[\\]]+/g)||[];
+    let out=[];
+    let level=0;
+
+    for(const t of tokens){
+        if(t==="["){ level++; continue; }
+        if(t==="]"){ level=Math.max(0,level-1); continue; }
+
+        if(level===0){
+            out.push(t.toLowerCase());
+        }else{
+            out.push("(" + t.toLowerCase() + ")");
+        }
+    }
+
+    return out.join(" ");
+}
+
+function buildTree(tokens){
+
+    const root={name:"RAIZ",children:[]};
+    let current=root;
+    const stack=[];
+
+    for(const token of tokens){
+
+        if(token==="["){
+            if(current.children.length){
+                stack.push(current);
+                current=current.children[current.children.length-1];
+            }
+            continue;
+        }
+
+        if(token==="]"){
+            if(stack.length){
+                current=stack.pop();
+            }
+            continue;
+        }
+
+        const node={name:token,children:[]};
+        current.children.push(node);
+    }
+
+    return root;
+}
+
+function renderTree(node){
+
+    if(!node.children.length){
+        return "";
+    }
+
+    let html="<ul>";
+
+    for(const child of node.children){
+
+        html += "<li><b>"+child.name+"</b>";
+        html += renderTree(child);
+        html += "</li>";
+    }
+
+    html += "</ul>";
+
+    return html;
+}
+
+function generate(){
+
+    const axiom=document.getElementById("axiom").value.trim();
+    const rules=parseRules(document.getElementById("rules").value);
+    const iterations=parseInt(document.getElementById("iterations").value);
+
+    const expanded=expand(axiom,rules,iterations);
+
+    document.getElementById("expanded").textContent=expanded;
+
+    document.getElementById("text").textContent=generateText(expanded);
+
+    const tokens=expanded.match(/\\[|\\]|[^\\s\\[\\]]+/g)||[];
+    const tree=buildTree(tokens);
+
+    document.getElementById("graph").innerHTML=renderTree(tree);
+}
+
+generate();
+</script>
+
+</body>
+</html>

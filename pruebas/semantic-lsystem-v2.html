@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>Semantic L-System</title>
+
+
+<style>
+
+body{
+    margin:0;
+    display:flex;
+    height:100vh;
+    font-family:Arial;
+}
+
+
+#panel{
+
+    width:420px;
+    padding:15px;
+    background:#eeeeee;
+    overflow:auto;
+
+}
+
+
+#main{
+
+    flex:1;
+    padding:20px;
+    overflow:auto;
+
+}
+
+
+textarea{
+
+    width:100%;
+    height:260px;
+
+}
+
+
+input{
+
+    width:100%;
+}
+
+
+button{
+
+    width:100%;
+    padding:10px;
+    margin-top:10px;
+
+}
+
+
+pre{
+
+    white-space:pre-wrap;
+    background:white;
+    border:1px solid #ccc;
+    padding:15px;
+
+}
+
+
+ul{
+
+    list-style:none;
+
+}
+
+
+li{
+
+    margin:5px;
+
+}
+
+
+</style>
+
+
+</head>
+
+
+
+<body>
+
+
+<div id="panel">
+
+
+<h2>Semantic L-System</h2>
+
+
+<label>Axioma</label>
+
+<input id="axiom" value="YO">
+
+
+
+<br><br>
+
+
+<label>Reglas</label>
+
+
+<textarea id="rules">
+
+YO =
+"yo recuerdo [MEMORIA] y sigo [CAMINO]"
+
+MEMORIA =
+"el perfume [INFANCIA] de los jazmines en [MEMORIA]"
+
+INFANCIA =
+"de los veranos en el patio"
+
+CAMINO =
+"camino hacia [DESTINO]"
+
+DESTINO =
+"el horizonte"
+
+</textarea>
+
+
+
+<label>Profundidad</label>
+
+<input id="depth" type="number" value="5">
+
+
+
+<button onclick="generate()">
+
+Generar
+
+</button>
+
+
+
+</div>
+
+
+
+
+<div id="main">
+
+
+<h2>Texto generado</h2>
+
+<pre id="result"></pre>
+
+
+
+<h2>Árbol semántico</h2>
+
+<div id="tree"></div>
+
+
+
+</div>
+
+
+
+
+
+<script>
+
+
+// =============================
+// PARSER
+// =============================
+
+
+function parseRules(text){
+
+
+    let rules={};
+
+
+    let current=null;
+
+    let buffer="";
+
+
+    let lines=text.split("\n");
+
+
+
+    for(let line of lines){
+
+
+        line=line.trim();
+
+
+
+        if(!line)
+            continue;
+
+
+
+        if(line.includes("=")){
+
+
+            if(current){
+
+                rules[current]=clean(buffer);
+
+            }
+
+
+
+            let parts=line.split("=");
+
+
+
+            current =
+                parts[0].trim();
+
+
+
+            buffer =
+                parts.slice(1)
+                .join("=")
+                .trim();
+
+
+        }
+        else{
+
+
+            buffer += " " + line;
+
+
+        }
+
+    }
+
+
+
+    if(current){
+
+        rules[current]=clean(buffer);
+
+    }
+
+
+    return rules;
+
+}
+
+
+
+
+function clean(value){
+
+
+    value=value.trim();
+
+
+    if(
+        value.startsWith('"')
+        &&
+        value.endsWith('"')
+    ){
+
+        value =
+        value.substring(
+            1,
+            value.length-1
+        );
+
+    }
+
+
+    return value;
+
+}
+
+
+
+
+
+// =============================
+// CREAR NODOS
+// =============================
+
+
+function textNode(value){
+
+    return {
+
+        type:"text",
+        value:value
+
+    };
+
+}
+
+
+
+function conceptNode(name){
+
+
+    return {
+
+        type:"concept",
+        name:name,
+        children:[]
+
+    };
+
+
+}
+
+
+
+
+
+// =============================
+// EXPANSION SEMANTICA
+// =============================
+
+
+function expandConcept(
+    name,
+    rules,
+    depth
+){
+
+
+    let node =
+        conceptNode(name);
+
+
+
+    // limite de crecimiento
+
+    if(depth<=0){
+
+        return node;
+
+    }
+
+
+
+    if(!rules[name]){
+
+        return node;
+
+    }
+
+
+
+    let template =
+        rules[name];
+
+
+
+    let regex=/\[([^\]]+)\]/g;
+
+
+
+    let last=0;
+
+
+    let match;
+
+
+
+    while(
+        (match=regex.exec(template))
+    ){
+
+
+
+        let before =
+            template.substring(
+                last,
+                match.index
+            );
+
+
+
+        if(before){
+
+            node.children.push(
+                textNode(before)
+            );
+
+        }
+
+
+
+
+        let childName =
+            match[1].trim();
+
+
+
+        node.children.push(
+
+            expandConcept(
+                childName,
+                rules,
+                depth-1
+            )
+
+        );
+
+
+
+        last =
+        regex.lastIndex;
+
+
+    }
+
+
+
+    let after =
+        template.substring(last);
+
+
+
+    if(after){
+
+        node.children.push(
+            textNode(after)
+        );
+
+    }
+
+
+
+    return node;
+
+
+}
+
+
+
+
+
+// =============================
+// TEXTO DESDE ARBOL
+// =============================
+
+
+function renderText(node){
+
+
+
+    if(node.type==="text"){
+
+        return node.value;
+
+    }
+
+
+
+    return node.children
+        .map(renderText)
+        .join("");
+
+}
+
+
+
+
+
+
+// =============================
+// ARBOL VISUAL
+// =============================
+
+
+function renderTree(node){
+
+
+    let label;
+
+
+
+    if(node.type==="text"){
+
+        label =
+        '"' + node.value + '"';
+
+    }
+    else{
+
+        label =
+        node.name;
+
+    }
+
+
+
+    let html =
+    "<li>"
+    +
+    escape(label);
+
+
+
+    if(node.children){
+
+
+        html+="<ul>";
+
+
+
+        for(let c of node.children){
+
+            html +=
+            renderTree(c);
+
+        }
+
+
+
+        html+="</ul>";
+
+    }
+
+
+
+    html+="</li>";
+
+
+
+    return html;
+
+
+}
+
+
+
+function escape(text){
+
+
+    return text
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;");
+
+
+}
+
+
+
+
+
+// =============================
+// MAIN
+// =============================
+
+
+function generate(){
+
+
+
+    let rules =
+        parseRules(
+            document
+            .getElementById("rules")
+            .value
+        );
+
+
+
+    let axiom =
+        document
+        .getElementById("axiom")
+        .value
+        .trim();
+
+
+
+    let depth =
+        Number(
+            document
+            .getElementById("depth")
+            .value
+        );
+
+
+
+    let tree =
+        expandConcept(
+            axiom,
+            rules,
+            depth
+        );
+
+
+
+    document
+    .getElementById("result")
+    .textContent =
+        renderText(tree);
+
+
+
+    document
+    .getElementById("tree")
+    .innerHTML =
+        "<ul>"
+        +
+        renderTree(tree)
+        +
+        "</ul>";
+
+
+
+}
+
+
+
+generate();
+
+
+
+</script>
+
+
+</body>
+
+</html>

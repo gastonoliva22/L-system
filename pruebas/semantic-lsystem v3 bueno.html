@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+<title>Semantic L-System</title>
+
+<style>
+
+body{
+    margin:0;
+    display:flex;
+    height:100vh;
+    font-family:Arial, sans-serif;
+}
+
+#panel{
+    width:420px;
+    padding:15px;
+    background:#eeeeee;
+    overflow:auto;
+}
+
+#main{
+    flex:1;
+    padding:20px;
+    overflow:auto;
+}
+
+textarea{
+    width:100%;
+    height:260px;
+}
+
+input{
+    width:100%;
+}
+
+button{
+    width:100%;
+    padding:10px;
+    margin-top:10px;
+}
+
+pre{
+    background:white;
+    border:1px solid #ccc;
+    padding:15px;
+    white-space:pre-wrap;
+}
+
+ul{
+    list-style:none;
+}
+
+li{
+    margin:5px;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<div id="panel">
+
+
+<h2>Semantic L-System</h2>
+
+
+<label>Axioma</label>
+
+<input id="axiom" value="[YO] [CAMINO]">
+
+
+<br><br>
+
+
+<label>Reglas</label>
+
+<textarea id="rules">
+
+YO =
+"yo recuerdo [MEMORIA]"
+
+MEMORIA =
+"el perfume [INFANCIA] de los jazmines en [MEMORIA]"
+
+INFANCIA =
+"de los veranos en el patio"
+
+CAMINO =
+"camino hacia [DESTINO]"
+
+DESTINO =
+"el horizonte"
+
+</textarea>
+
+
+<label>Profundidad</label>
+
+<input 
+id="depth"
+type="number"
+value="3">
+
+
+<button onclick="generate()">
+Generar
+</button>
+
+
+</div>
+
+
+
+<div id="main">
+
+
+<h2>Texto generado</h2>
+
+<pre id="result"></pre>
+
+
+<h2>Árbol semántico</h2>
+
+<div id="tree"></div>
+
+
+</div>
+
+
+
+<script>
+
+
+// =====================
+// PARSER DE REGLAS
+// =====================
+
+
+function parseRules(text){
+
+
+    let rules={};
+
+    let current=null;
+
+    let buffer="";
+
+
+    for(let line of text.split("\n")){
+
+
+        line=line.trim();
+
+
+        if(!line)
+            continue;
+
+
+
+        if(line.includes("=")){
+
+
+            if(current){
+
+                rules[current]=clean(buffer);
+
+            }
+
+
+
+            let parts=line.split("=");
+
+
+            current =
+                parts[0].trim();
+
+
+
+            buffer =
+                parts.slice(1)
+                .join("=")
+                .trim();
+
+
+        }
+        else{
+
+
+            buffer += " " + line;
+
+
+        }
+
+
+    }
+
+
+
+    if(current){
+
+        rules[current]=clean(buffer);
+
+    }
+
+
+    return rules;
+
+}
+
+
+
+
+function clean(value){
+
+
+    value=value.trim();
+
+
+    if(
+        value.startsWith('"')
+        &&
+        value.endsWith('"')
+    ){
+
+        value =
+        value.substring(
+            1,
+            value.length-1
+        );
+
+    }
+
+
+    return value;
+
+}
+
+
+
+
+
+// =====================
+// NODOS
+// =====================
+
+
+function rootNode(){
+
+    return {
+
+        type:"root",
+        name:"ROOT",
+        children:[]
+
+    };
+
+}
+
+
+
+function conceptNode(name){
+
+    return {
+
+        type:"concept",
+        name:name,
+        children:[]
+
+    };
+
+}
+
+
+
+function textNode(text){
+
+    return {
+
+        type:"text",
+        value:text,
+        children:[]
+
+    };
+
+}
+
+
+
+
+
+// =====================
+// EXPANDIR CONCEPTO
+// =====================
+
+
+function expandConcept(
+    name,
+    rules,
+    depth
+){
+
+
+    let node =
+        conceptNode(name);
+
+
+
+    if(depth<=0)
+        return node;
+
+
+
+    if(!rules[name])
+        return node;
+
+
+
+    let template =
+        rules[name];
+
+
+
+    parseTemplate(
+        template,
+        node,
+        rules,
+        depth-1
+    );
+
+
+
+    return node;
+
+}
+
+
+
+
+
+// =====================
+// EXPANDIR PLANTILLA
+// =====================
+
+
+function expandTemplate(
+    template,
+    rules,
+    depth
+){
+
+
+    let root =
+        rootNode();
+
+
+
+    parseTemplate(
+        template,
+        root,
+        rules,
+        depth
+    );
+
+
+
+    return root;
+
+}
+
+
+
+
+
+function parseTemplate(
+    template,
+    parent,
+    rules,
+    depth
+){
+
+
+    let regex=/\[([^\]]+)\]/g;
+
+    let last=0;
+
+    let match;
+
+
+
+    while(
+        (match=regex.exec(template))
+    ){
+
+
+        let before =
+            template.substring(
+                last,
+                match.index
+            );
+
+
+
+        if(before.trim()){
+
+            parent.children.push(
+                textNode(before)
+            );
+
+        }
+
+
+
+        let concept =
+            match[1].trim();
+
+
+
+        parent.children.push(
+
+            expandConcept(
+                concept,
+                rules,
+                depth
+            )
+
+        );
+
+
+
+        last =
+        regex.lastIndex;
+
+    }
+
+
+
+    let after =
+        template.substring(last);
+
+
+
+    if(after.trim()){
+
+
+        parent.children.push(
+
+            textNode(after)
+
+        );
+
+    }
+
+
+}
+
+
+
+
+
+// =====================
+// TEXTO FINAL
+// =====================
+
+
+function treeToText(node){
+
+
+    let result;
+
+
+
+    if(node.type==="text"){
+
+        result = node.value;
+
+    }
+    else{
+
+        result =
+        node.children
+        .map(treeToText)
+        .join("");
+
+    }
+
+
+
+    return result
+        .replace(/\s+/g," ")
+        .trim();
+
+}
+
+
+
+
+
+// =====================
+// DIBUJAR ARBOL
+// =====================
+
+
+function renderTree(node){
+
+
+    // ROOT no se dibuja
+    if(node.type==="root"){
+
+
+        let html="";
+
+
+        for(let child of node.children){
+
+            html += renderTree(child);
+
+        }
+
+
+        return html;
+
+    }
+
+
+
+    let title;
+
+
+    if(node.type==="text"){
+
+        title =
+        '"' + node.value.trim() + '"';
+
+    }
+    else{
+
+        title=node.name;
+
+    }
+
+
+
+    let html =
+    "<li>"
+    +
+    escape(title);
+
+
+
+    if(node.children.length){
+
+
+        html+="<ul>";
+
+
+
+        for(let child of node.children){
+
+            html +=
+            renderTree(child);
+
+        }
+
+
+
+        html+="</ul>";
+
+    }
+
+
+
+    html+="</li>";
+
+
+
+    return html;
+
+}
+
+
+
+function escape(text){
+
+    return text
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;");
+
+}
+
+
+
+
+
+// =====================
+// EJECUTAR
+// =====================
+
+
+function generate(){
+
+
+    let rules =
+        parseRules(
+            document
+            .getElementById("rules")
+            .value
+        );
+
+
+
+    let axiom =
+        document
+        .getElementById("axiom")
+        .value;
+
+
+
+    let depth =
+        Number(
+            document
+            .getElementById("depth")
+            .value
+        );
+
+
+
+    let tree =
+        expandTemplate(
+            axiom,
+            rules,
+            depth
+        );
+
+
+
+    document
+    .getElementById("result")
+    .textContent =
+        treeToText(tree);
+
+
+
+    document
+    .getElementById("tree")
+    .innerHTML =
+        "<ul>"
+        +
+        renderTree(tree)
+        +
+        "</ul>";
+
+}
+
+
+
+generate();
+
+
+</script>
+
+
+</body>
+
+</html>

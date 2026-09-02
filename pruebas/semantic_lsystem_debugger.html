@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>Semantic L-System Debugger</title>
+
+
+<style>
+
+
+body{
+
+    margin:0;
+    height:100vh;
+    display:flex;
+    font-family:Arial;
+
+}
+
+
+
+#panel{
+
+    width:420px;
+    padding:15px;
+    background:#eee;
+    overflow:auto;
+
+}
+
+
+#main{
+
+    flex:1;
+    padding:20px;
+    overflow:auto;
+
+}
+
+
+textarea{
+
+    width:100%;
+    height:260px;
+
+}
+
+
+
+input,select,button{
+
+    width:100%;
+    margin-top:8px;
+    padding:8px;
+
+}
+
+
+
+button{
+
+    cursor:pointer;
+
+}
+
+
+
+pre{
+
+    background:#fafafa;
+    border:1px solid #ccc;
+    padding:15px;
+    white-space:pre-wrap;
+
+}
+
+
+
+ul{
+
+    list-style:none;
+
+}
+
+
+li{
+
+    margin:5px;
+
+}
+
+
+
+.concept{
+
+    color:#1565c0;
+    font-weight:bold;
+
+}
+
+
+
+.text{
+
+    color:#555;
+
+}
+
+
+
+.cycle{
+
+    color:#c62828;
+
+}
+
+
+</style>
+
+
+</head>
+
+
+
+<body>
+
+
+
+<div id="panel">
+
+
+<h2>Semantic L-System</h2>
+
+
+
+<label>Axioma</label>
+
+<input id="axiom"
+value="[YO] [CAMINO]">
+
+
+
+<label>Reglas</label>
+
+
+<textarea id="rules">
+
+YO =
+"yo recuerdo [MEMORIA]"
+
+MEMORIA =
+"el perfume [INFANCIA] de los jazmines en [MEMORIA]"
+
+INFANCIA =
+"de los veranos en el patio"
+
+CAMINO =
+"camino hacia [DESTINO]"
+
+DESTINO =
+"el horizonte"
+
+</textarea>
+
+
+
+<label>Generación</label>
+
+<input id="generation"
+type="number"
+value="3">
+
+
+
+<label>Límite de nodos</label>
+
+<input id="limit"
+type="number"
+value="5000">
+
+
+
+<label>Velocidad Play</label>
+
+<select id="speed">
+
+<option value="1000">1 segundo</option>
+<option value="500">500 ms</option>
+<option value="200">200 ms</option>
+
+</select>
+
+
+
+<button onclick="prev()">
+◀ Prev
+</button>
+
+
+<button onclick="next()">
+Next ▶
+</button>
+
+
+<button onclick="play()">
+Play ▶
+</button>
+
+
+
+<button onclick="stopPlay()">
+Stop
+</button>
+
+
+</div>
+
+
+
+
+
+<div id="main">
+
+
+<h2>
+Generación:
+<span id="labelGen"></span>
+</h2>
+
+
+<h2>Texto</h2>
+
+
+<pre id="result"></pre>
+
+
+
+<h2>Árbol</h2>
+
+
+<div id="tree"></div>
+
+
+
+</div>
+
+
+
+
+
+
+
+<script>
+
+
+
+
+
+// =====================================
+// MOTOR
+// =====================================
+
+
+const engine = {
+
+
+    generation:0,
+
+    timer:null,
+
+
+    maxNodes:5000,
+
+
+    cache:{},
+
+
+    root:null
+
+
+};
+
+
+
+
+
+// =====================================
+// PARSER
+// =====================================
+
+
+
+function parseRules(text){
+
+
+    let rules={};
+
+
+    let current=null;
+
+    let buffer="";
+
+
+
+    for(let line of text.split("\n")){
+
+
+        line=line.trim();
+
+
+        if(!line)
+            continue;
+
+
+
+        if(line.includes("=")){
+
+
+
+            if(current){
+
+                rules[current]=parseTemplate(buffer);
+
+            }
+
+
+
+            let p=line.split("=");
+
+
+            current=p[0].trim();
+
+
+            buffer=
+            p.slice(1)
+            .join("=")
+            .trim();
+
+
+
+        }
+        else{
+
+
+            buffer+=" "+line;
+
+
+        }
+
+
+    }
+
+
+
+    if(current){
+
+        rules[current]=parseTemplate(buffer);
+
+    }
+
+
+    return rules;
+
+}
+
+
+
+
+
+// =====================================
+// CACHE AST DE REGLAS
+// =====================================
+
+
+
+function parseTemplate(text){
+
+
+    let parts=[];
+
+
+    let regex=/\[([^\]]+)\]/g;
+
+
+    let last=0;
+
+
+    let m;
+
+
+
+    while((m=regex.exec(text))){
+
+
+        let before =
+        text.substring(
+            last,
+            m.index
+        );
+
+
+
+        if(before){
+
+            parts.push({
+
+                type:"text",
+                value:before
+
+            });
+
+        }
+
+
+
+        parts.push({
+
+            type:"concept",
+            value:m[1].trim()
+
+        });
+
+
+
+        last=
+        regex.lastIndex;
+
+
+    }
+
+
+
+    let after=
+    text.substring(last);
+
+
+
+    if(after){
+
+        parts.push({
+
+            type:"text",
+            value:after
+
+        });
+
+    }
+
+
+
+    return parts;
+
+}
+
+
+
+
+
+
+
+// =====================================
+// CREAR NODOS
+// =====================================
+
+
+
+function concept(name){
+
+return {
+
+type:"concept",
+
+name:name,
+
+children:[]
+
+
+};
+
+}
+
+
+
+
+
+function text(value){
+
+return {
+
+
+type:"text",
+
+value:value,
+
+children:[]
+
+};
+
+
+}
+
+
+
+
+
+// =====================================
+// EXPANSION LAZY
+// =====================================
+
+
+
+function expand(
+    name,
+    rules,
+    depth,
+    path
+){
+
+
+    let node =
+    concept(name);
+
+
+
+    if(engine.nodes++ >
+       engine.maxNodes){
+
+
+        return text(
+        "[LIMIT]"
+        );
+
+    }
+
+
+
+
+    if(path.includes(name)){
+
+
+        node.cycle=true;
+
+        return node;
+
+    }
+
+
+
+
+    if(depth<=0 ||
+       !rules[name]){
+
+
+        return node;
+
+
+    }
+
+
+
+
+    let nextPath =
+    [...path,name];
+
+
+
+    for(let part of rules[name]){
+
+
+        if(part.type==="text"){
+
+
+            node.children.push(
+            text(part.value)
+            );
+
+
+        }
+        else{
+
+
+            node.children.push(
+
+                expand(
+                    part.value,
+                    rules,
+                    depth-1,
+                    nextPath
+                )
+
+            );
+
+
+        }
+
+
+    }
+
+
+    return node;
+
+
+}
+
+
+
+
+
+
+
+
+function build(){
+
+
+
+
+    let rules =
+    parseRules(
+        document
+        .getElementById("rules")
+        .value
+    );
+
+
+
+    let axiom =
+    document
+    .getElementById("axiom")
+    .value;
+
+
+
+    engine.maxNodes =
+    Number(
+    document
+    .getElementById("limit")
+    .value
+    );
+
+
+
+    engine.nodes=0;
+
+
+
+    let root={
+
+        type:"root",
+        children:[]
+
+    };
+
+
+
+    let parts=
+    parseTemplate(axiom);
+
+
+
+    for(let p of parts){
+
+
+        if(p.type==="text"){
+
+            root.children.push(
+            text(p.value)
+            );
+
+        }
+        else{
+
+
+            root.children.push(
+
+                expand(
+                p.value,
+                rules,
+                engine.generation,
+                []
+
+                )
+
+            );
+
+        }
+
+    }
+
+
+    engine.root=root;
+
+
+
+    render();
+
+}
+
+
+
+
+
+
+// =====================================
+// TEXTO
+// =====================================
+
+
+function toText(node){
+
+
+
+    if(node.type==="text")
+
+        return node.value;
+
+
+
+    return node.children
+    .map(toText)
+    .join("");
+
+
+
+}
+
+
+
+
+
+
+
+// =====================================
+// ARBOL HTML
+// =====================================
+
+
+
+function treeHTML(node){
+
+
+
+    if(node.type==="root"){
+
+
+        return node.children
+        .map(treeHTML)
+        .join("");
+
+
+    }
+
+
+
+    let cls=
+    node.type==="concept"
+    ?"concept"
+    :"text";
+
+
+
+    if(node.cycle)
+        cls="cycle";
+
+
+
+    let label =
+    node.type==="text"
+    ?
+    `"${node.value}"`
+    :
+    node.name;
+
+
+
+    let html=
+
+    `<li class="${cls}">
+    ${escape(label)}`;
+
+
+
+    if(node.children.length){
+
+
+        html+="<ul>";
+
+
+
+        for(let c of node.children)
+
+            html+=treeHTML(c);
+
+
+
+        html+="</ul>";
+
+    }
+
+
+
+    html+="</li>";
+
+
+
+    return html;
+
+
+}
+
+
+
+
+
+
+function escape(t){
+
+return t
+.replaceAll("&","&amp;")
+.replaceAll("<","&lt;")
+.replaceAll(">","&gt;");
+
+}
+
+
+
+
+
+
+
+// =====================================
+// CONTROLES
+// =====================================
+
+
+
+function next(){
+
+
+    engine.generation++;
+
+
+    build();
+
+
+}
+
+
+
+
+function prev(){
+
+
+    if(engine.generation>0)
+
+        engine.generation--;
+
+
+    build();
+
+
+}
+
+
+
+
+
+function play(){
+
+
+    stopPlay();
+
+
+    engine.timer=setInterval(()=>{
+
+
+        next();
+
+
+    },
+
+    Number(
+    document
+    .getElementById("speed")
+    .value
+    ));
+
+
+
+}
+
+
+
+function stopPlay(){
+
+
+    clearInterval(
+    engine.timer
+    );
+
+
+}
+
+
+
+
+
+
+function render(){
+
+
+document
+.getElementById("labelGen")
+.textContent=
+engine.generation;
+
+
+
+document
+.getElementById("result")
+.textContent=
+toText(engine.root)
+.replace(/\s+/g," ")
+.trim();
+
+
+
+document
+.getElementById("tree")
+.innerHTML=
+"<ul>"
++
+treeHTML(engine.root)
++
+"</ul>";
+
+}
+
+
+
+
+
+build();
+
+
+
+</script>
+
+
+
+</body>
+
+</html>

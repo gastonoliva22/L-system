@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+
+        <title>L-System Debugger v3</title>
+
+        <style>
+            * {
+                box-sizing: border-box;
+                font-family: Arial;
+            }
+
+            body {
+                margin: 0;
+                height: 100vh;
+                display: flex;
+                overflow: hidden;
+            }
+
+            #left {
+                width: 390px;
+                background: #f2f2f2;
+                padding: 12px;
+                overflow: auto;
+            }
+
+            #right {
+                flex: 1;
+                display: flex;
+            }
+
+            canvas {
+                width: 100%;
+                height: 100%;
+                background: white;
+            }
+
+            label {
+                display: block;
+                font-weight: bold;
+                margin-top: 8px;
+            }
+
+            input,
+            textarea,
+            button {
+                width: 100%;
+                padding: 8px;
+                margin-top: 6px;
+            }
+
+            textarea {
+                height: 140px;
+            }
+
+            .controls {
+                display: flex;
+                gap: 5px;
+            }
+
+            .controls button {
+                height: 42px;
+                font-size: 18px;
+
+                transition: 0.15s;
+            }
+
+            .controls button:hover {
+                transform: translateY(-2px);
+            }
+
+            .controls button:active {
+                transform: scale(0.9);
+            }
+
+            .play {
+                background: #4caf50;
+                color: white;
+            }
+
+            .stop {
+                background: #e53935;
+                color: white;
+            }
+
+            .info {
+                background: white;
+                border: 1px solid #ccc;
+                padding: 8px;
+                margin-top: 10px;
+                font-size: 13px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="left">
+            <h2>L-System Debugger</h2>
+
+            <label>Axioma</label>
+
+            <input id="axiom" value="X" />
+
+            <label>Reglas</label>
+
+            <textarea id="rules">
+
+            X=F[+X][-X]FX
+            F=FF
+
+            </textarea>
+
+            <label>Generaciones</label>
+
+            <input id="iterations" type="number" value="6" />
+
+            <label>Ángulo</label>
+
+            <input id="angle" type="number" value="25" />
+
+            <label>Longitud</label>
+
+            <input id="step" type="number" value="5" />
+
+            <button onclick="build()">Actualizar</button>
+
+            <button onclick="finalView()">Ver versión final</button>
+
+            <div class="controls">
+                <button title="Inicio" onclick="first()">⏮</button>
+
+                <button title="Anterior" onclick="prev()">◀</button>
+
+                <button class="play" title="Reproducir" onclick="play()">
+                    ▶
+                </button>
+
+                <button class="stop" title="Detener" onclick="stopPlay()">
+                    ⏹
+                </button>
+
+                <button title="Siguiente" onclick="next()">▶</button>
+
+                <button title="Final" onclick="last()">⏭</button>
+            </div>
+
+            <div class="info" id="info"></div>
+
+            <div class="info" id="cursor"></div>
+        </div>
+
+        <div id="right">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <script>
+            const canvas = document.getElementById("canvas");
+
+            const ctx = canvas.getContext("2d");
+
+            function resize() {
+                canvas.width = canvas.clientWidth;
+
+                canvas.height = canvas.clientHeight;
+            }
+
+            window.onresize = resize;
+
+            resize();
+
+            let zoom = 1;
+
+            let offsetX = 0;
+
+            let offsetY = 0;
+
+            let dragging = false;
+
+            let lx = 0;
+
+            let ly = 0;
+
+            canvas.onmousedown = (e) => {
+                dragging = true;
+
+                lx = e.clientX;
+
+                ly = e.clientY;
+            };
+
+            window.onmouseup = () => {
+                dragging = false;
+            };
+
+            window.onmousemove = (e) => {
+                if (!dragging) return;
+
+                offsetX += e.clientX - lx;
+
+                offsetY += e.clientY - ly;
+
+                lx = e.clientX;
+
+                ly = e.clientY;
+
+                render();
+            };
+
+            canvas.onwheel = (e) => {
+                zoom *= e.deltaY < 0 ? 1.1 : 0.9;
+
+                render();
+            };
+
+            // ============================
+            // MOTOR L-SYSTEM
+            // ============================
+
+            const engine = {
+                rules: {},
+
+                cache: {},
+
+                generation: 0,
+
+                maxGeneration: 0,
+
+                cursor: 0,
+
+                angle: 0,
+
+                step: 5,
+
+                timer: null,
+
+                cacheLimit: 5,
+            };
+
+            function parseRules(text) {
+                let rules = {};
+
+                text.split("\n").forEach((line) => {
+                    line = line.trim();
+
+                    if (!line) return;
+
+                    let parts = line.split("=");
+
+                    if (parts.length === 2) {
+                        rules[parts[0].trim()] = parts[1].trim();
+                    }
+                });
+
+                return rules;
+            }
+
+            function getGeneration(n) {
+                if (engine.cache[n]) {
+                    return engine.cache[n];
+                }
+
+                if (n === 0) {
+                    let ax = document.getElementById("axiom").value;
+
+                    engine.cache[0] = ax;
+
+                    return ax;
+                }
+
+                let previous = getGeneration(n - 1);
+
+                let result = "";
+
+                for (let char of previous) {
+                    result += engine.rules[char] ?? char;
+                }
+
+                engine.cache[n] = result;
+
+                // limite de memoria
+
+                let keys = Object.keys(engine.cache);
+
+                if (keys.length > engine.cacheLimit) {
+                    delete engine.cache[keys[0]];
+                }
+
+                return result;
+            }
+
+            function build() {
+                stopPlay();
+
+                engine.rules = parseRules(
+                    document.getElementById("rules").value,
+                );
+
+                engine.maxGeneration = Number(
+                    document.getElementById("iterations").value,
+                );
+
+                engine.angle = Number(document.getElementById("angle").value);
+
+                engine.step = Number(document.getElementById("step").value);
+
+                engine.cache = {};
+
+                engine.generation = engine.maxGeneration;
+
+                engine.cursor = 0;
+
+                render();
+            }
+
+            function getString() {
+                return getGeneration(engine.generation);
+            }
+
+            function parseRules(text) {
+                let rules = {};
+
+                text.split("\n").forEach((line) => {
+                    line = line.trim();
+
+                    if (!line) return;
+
+                    let p = line.split("=");
+
+                    if (p.length === 2) {
+                        rules[p[0].trim()] = p[1].trim();
+                    }
+                });
+
+                return rules;
+            }
+
+            function generate(str) {
+                let out = "";
+
+                for (let c of str) {
+                    out += engine.rules[c] ?? c;
+                }
+
+                return out;
+            }
+
+            function build() {
+                stopPlay();
+
+                engine.rules = parseRules(
+                    document.getElementById("rules").value,
+                );
+
+                engine.max = Number(
+                    document.getElementById("iterations").value,
+                );
+
+                engine.angle = Number(document.getElementById("angle").value);
+
+                engine.step = Number(document.getElementById("step").value);
+
+                engine.generations = [];
+
+                let current = document.getElementById("axiom").value;
+
+                engine.generations.push(current);
+
+                for (let i = 0; i < engine.max; i++) {
+                    current = generate(current);
+
+                    engine.generations.push(current);
+                }
+
+                engine.generation = 0;
+
+                engine.cursor = 0;
+
+                render();
+            }
+
+            function getString() {
+                return engine.generations[engine.generation];
+            }
+
+            // ============================
+            // TURTLE
+            // ============================
+
+            function calculate() {
+                let str = getString();
+
+                let x = 0;
+                let y = 0;
+
+                let heading = -90;
+
+                let stack = [];
+
+                let segments = [];
+
+                for (let i = 0; i < engine.cursor; i++) {
+                    let symbol = str[i];
+
+                    switch (symbol) {
+                        case "F": {
+                            let rad = (heading * Math.PI) / 180;
+
+                            let nx = x + Math.cos(rad) * engine.step;
+
+                            let ny = y + Math.sin(rad) * engine.step;
+
+                            segments.push({
+                                x1: x,
+                                y1: y,
+
+                                x2: nx,
+                                y2: ny,
+                            });
+
+                            x = nx;
+                            y = ny;
+
+                            break;
+                        }
+
+                        case "+":
+                            heading += engine.angle;
+
+                            break;
+
+                        case "-":
+                            heading -= engine.angle;
+
+                            break;
+
+                        case "[":
+                            stack.push({
+                                x,
+                                y,
+                                heading,
+                            });
+
+                            break;
+
+                        case "]":
+                            let state = stack.pop();
+
+                            if (state) {
+                                x = state.x;
+                                y = state.y;
+                                heading = state.heading;
+                            }
+
+                            break;
+                    }
+                }
+
+                return {
+                    segments,
+                    symbol: str[engine.cursor],
+                    stack,
+                };
+            }
+
+            function render() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                let turtle = calculate();
+
+                ctx.save();
+
+                ctx.translate(
+                    canvas.width / 2 + offsetX,
+                    canvas.height / 2 + offsetY,
+                );
+
+                ctx.scale(zoom, zoom);
+
+                ctx.beginPath();
+
+                turtle.segments.forEach((seg) => {
+                    ctx.moveTo(seg.x1, seg.y1);
+
+                    ctx.lineTo(seg.x2, seg.y2);
+                });
+
+                ctx.stroke();
+
+                ctx.restore();
+
+                document.getElementById("info").innerHTML = `
+                    Generación:
+                    ${engine.generation}
+
+                    <br>
+
+                    Cursor:
+                    ${engine.cursor}
+
+                    <br>
+
+                    Símbolo:
+                    ${turtle.symbol ?? "-"}
+
+                    <br>
+
+                    Segmentos:
+                    ${turtle.segments.length}
+
+                    `;
+            }
+
+            // ============================
+            // CONTROLES
+            // ============================
+
+            function next() {
+                let str = getString();
+
+                if (engine.cursor < str.length) {
+                    engine.cursor++;
+
+                    render();
+                }
+            }
+
+            function prev() {
+                if (engine.cursor > 0) {
+                    engine.cursor--;
+
+                    render();
+                }
+            }
+
+            function first() {
+                engine.cursor = 0;
+
+                render();
+            }
+
+            function last() {
+                engine.cursor = getString().length;
+
+                render();
+            }
+
+            function play() {
+                if (engine.timer) return;
+
+                engine.timer = setInterval(() => {
+                    next();
+
+                    if (engine.cursor >= getString().length) {
+                        stopPlay();
+                    }
+                }, 40);
+            }
+
+            function stopPlay() {
+                clearInterval(engine.timer);
+
+                engine.timer = null;
+            }
+
+            function finalView() {
+                engine.cursor = getString().length;
+
+                render();
+            }
+
+            build();
+        </script>
+    </body>
+</html>

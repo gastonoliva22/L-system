@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>Semantic L-System Debugger</title>
+
+
+<style>
+
+
+*{
+    box-sizing:border-box;
+}
+
+
+body{
+
+    margin:0;
+    height:100vh;
+    display:flex;
+    font-family:Arial;
+
+}
+
+
+#panel{
+
+    width:420px;
+    padding:15px;
+    background:#eeeeee;
+    overflow:auto;
+
+}
+
+
+
+#main{
+
+    flex:1;
+    padding:20px;
+    overflow:auto;
+
+}
+
+
+
+input,
+textarea,
+select,
+button{
+
+    width:100%;
+    box-sizing:border-box;
+    padding:8px;
+    margin-top:8px;
+
+}
+
+
+
+textarea{
+
+    height:260px;
+
+}
+
+
+
+button{
+
+    cursor:pointer;
+
+}
+
+
+
+.player{
+
+    display:flex;
+    gap:6px;
+    margin-top:10px;
+
+}
+
+
+.player button{
+
+    height:40px;
+    border-radius:6px;
+    border:1px solid #999;
+    font-size:18px;
+
+}
+
+
+.player .step{
+
+    background:#ddd;
+
+}
+
+
+.player .play{
+
+    background:#4caf50;
+    color:white;
+
+}
+
+
+.player .stop{
+
+    background:#e53935;
+    color:white;
+
+}
+
+
+
+pre{
+
+    background:#fafafa;
+    border:1px solid #ccc;
+    padding:15px;
+    white-space:pre-wrap;
+
+}
+
+
+ul{
+
+    list-style:none;
+
+}
+
+
+
+li{
+
+    margin:5px;
+
+}
+
+
+.concept{
+
+    color:#1565c0;
+    font-weight:bold;
+
+}
+
+
+.text{
+
+    color:#555;
+
+}
+
+
+.cycle{
+
+    color:#c62828;
+
+}
+
+
+</style>
+
+
+</head>
+
+
+<body>
+
+
+
+<div id="panel">
+
+
+<h2>Semantic L-System</h2>
+
+
+
+<label>Axioma</label>
+
+<input id="axiom"
+value="[YO] [CAMINO]">
+
+
+
+<label>Reglas</label>
+
+
+<textarea id="rules">
+
+YO =
+"yo recuerdo [MEMORIA]"
+
+MEMORIA =
+"el perfume [INFANCIA] de los jazmines en [MEMORIA]"
+
+INFANCIA =
+"de los veranos en el patio"
+
+CAMINO =
+"camino hacia [DESTINO]"
+
+DESTINO =
+"el horizonte"
+
+</textarea>
+
+
+
+
+<label>Generación máxima</label>
+
+<input id="maxGeneration"
+type="number"
+value="5"
+min="0">
+
+
+
+<label>Límite nodos</label>
+
+<input id="limit"
+type="number"
+value="5000">
+
+
+
+<label>Velocidad</label>
+
+<select id="speed">
+
+<option value="1000">
+1 segundo
+</option>
+
+<option value="500">
+500 ms
+</option>
+
+<option value="200">
+200 ms
+</option>
+
+</select>
+
+
+
+
+
+<div class="player">
+
+
+<button class="step"
+title="Ir a la primera generación"
+onclick="first()">
+⏮
+</button>
+
+
+<button class="step"
+title="Generación anterior"
+onclick="prev()">
+◀
+</button>
+
+
+<button class="play"
+title="Reproducir generaciones automáticamente"
+onclick="play()">
+▶
+</button>
+
+
+<button class="stop"
+title="Detener reproducción"
+onclick="stopPlay()">
+⏹
+</button>
+
+
+<button class="step"
+title="Siguiente generación"
+onclick="next()">
+▶
+</button>
+
+
+<button class="step"
+title="Ir a la última generación"
+onclick="last()">
+⏭
+</button>
+
+
+</div>
+
+
+
+<button onclick="refresh()">
+Actualizar
+</button>
+
+
+
+</div>
+
+
+
+
+
+<div id="main">
+
+
+<h2>
+Generación:
+<span id="labelGen"></span>
+</h2>
+
+
+
+<h2>
+Texto final
+</h2>
+
+
+<pre id="result"></pre>
+
+
+
+
+<h2>
+Árbol semántico
+</h2>
+
+
+<div id="tree"></div>
+
+
+
+</div>
+
+
+
+
+
+<script>
+
+
+const engine={
+
+
+generation:0,
+
+timer:null,
+
+root:null,
+
+maxNodes:5000,
+
+maxGeneration:5
+
+
+};
+
+
+
+
+// ==========================
+// PARSER
+// ==========================
+
+
+function cleanQuotes(text){
+
+
+text=text.trim();
+
+
+if(
+text.startsWith('"')
+&&
+text.endsWith('"')
+){
+
+text=text.substring(
+1,
+text.length-1
+);
+
+}
+
+
+return text;
+
+}
+
+function refresh(){
+
+    stopPlay();
+
+    engine.generation=0;
+
+    build();
+
+}
+
+
+
+function parseRules(text){
+
+
+let rules={};
+
+let current=null;
+
+let buffer="";
+
+
+
+for(let line of text.split("\n")){
+
+
+line=line.trim();
+
+
+if(!line)
+continue;
+
+
+
+if(line.includes("=")){
+
+
+if(current){
+
+rules[current]=parseTemplate(
+cleanQuotes(buffer)
+);
+
+}
+
+
+
+let p=line.split("=");
+
+
+current=p[0].trim();
+
+
+buffer=
+p.slice(1)
+.join("=")
+.trim();
+
+
+}
+
+else{
+
+
+buffer+=" "+line;
+
+
+}
+
+
+
+}
+
+
+
+if(current){
+
+rules[current]=parseTemplate(
+cleanQuotes(buffer)
+);
+
+}
+
+
+
+return rules;
+
+
+}
+
+
+
+
+
+
+
+function parseTemplate(text){
+
+
+
+let parts=[];
+
+
+let regex=/\[([^\]]+)\]/g;
+
+
+let last=0;
+
+
+let m;
+
+
+
+while(
+(m=regex.exec(text))
+){
+
+
+
+let before=
+text.substring(
+last,
+m.index
+);
+
+
+
+if(before.trim()){
+
+
+parts.push({
+
+type:"text",
+
+value:before
+
+});
+
+
+}
+
+
+
+
+parts.push({
+
+type:"concept",
+
+value:m[1].trim()
+
+});
+
+
+
+last=
+regex.lastIndex;
+
+
+}
+
+
+
+let after=
+text.substring(last);
+
+
+
+if(after.trim()){
+
+
+parts.push({
+
+type:"text",
+
+value:after
+
+});
+
+}
+
+
+return parts;
+
+
+}
+
+
+
+
+
+
+// ==========================
+// NODOS
+// ==========================
+
+
+function concept(name){
+
+return {
+
+type:"concept",
+
+name:name,
+
+children:[]
+
+};
+
+
+}
+
+
+
+function text(value){
+
+return {
+
+type:"text",
+
+value:value,
+
+children:[]
+
+};
+
+
+}
+
+
+
+
+
+
+
+
+// ==========================
+// EXPANSION
+// ==========================
+
+
+function expand(
+name,
+rules,
+depth,
+path
+){
+
+
+let node=
+concept(name);
+
+
+
+if(engine.nodes++ >
+engine.maxNodes){
+
+return text("[LIMIT]");
+
+}
+
+
+
+if(path.includes(name)){
+
+
+node.cycle=true;
+
+return node;
+
+
+}
+
+
+
+if(depth<=0 ||
+!rules[name]){
+
+
+return node;
+
+}
+
+
+
+for(let part of rules[name]){
+
+
+if(part.type==="text"){
+
+
+node.children.push(
+text(part.value)
+);
+
+
+}
+else{
+
+
+node.children.push(
+
+expand(
+part.value,
+rules,
+depth-1,
+[...path,name]
+)
+
+);
+
+
+}
+
+
+
+}
+
+
+
+return node;
+
+
+}
+
+
+
+
+
+
+
+function build(){
+
+
+let rules=
+parseRules(
+document.getElementById("rules").value
+);
+
+
+
+engine.maxNodes=
+Number(
+document.getElementById("limit").value
+);
+
+
+
+engine.maxGeneration=
+Number(
+document.getElementById("maxGeneration").value
+);
+
+
+
+engine.nodes=0;
+
+
+
+let root={
+
+type:"root",
+
+children:[]
+
+};
+
+
+
+let axiom=
+parseTemplate(
+document.getElementById("axiom").value
+);
+
+
+
+for(let p of axiom){
+
+
+if(p.type==="text"){
+
+
+root.children.push(
+text(p.value)
+);
+
+
+}
+else{
+
+
+root.children.push(
+
+expand(
+p.value,
+rules,
+engine.generation,
+[]
+
+)
+
+);
+
+
+}
+
+
+
+}
+
+
+
+engine.root=root;
+
+
+
+render();
+
+
+}
+
+
+
+
+
+
+// ==========================
+// TEXTO
+// ==========================
+
+
+function toText(node){
+
+
+if(node.type==="text")
+
+return node.value;
+
+
+
+return node.children
+.map(toText)
+.join("");
+
+}
+
+
+
+
+// ==========================
+// TREE
+// ==========================
+
+
+function treeHTML(node){
+
+
+if(node.type==="root"){
+
+
+return node.children
+.map(treeHTML)
+.join("");
+
+
+}
+
+
+
+let cls=
+node.type==="concept"
+?
+"concept"
+:
+"text";
+
+
+
+if(node.cycle)
+
+cls="cycle";
+
+
+
+let label;
+
+
+
+if(node.type==="text"){
+
+label=node.value.trim();
+
+}
+else{
+
+label=node.name;
+
+}
+
+
+
+let html=
+`
+<li class="${cls}">
+${escapeHTML(label)}
+`;
+
+
+
+if(node.children.length){
+
+
+html+="<ul>";
+
+
+
+for(let c of node.children){
+
+html+=treeHTML(c);
+
+}
+
+
+
+html+="</ul>";
+
+
+}
+
+
+
+html+="</li>";
+
+
+
+return html;
+
+
+}
+
+
+
+function escapeHTML(t){
+
+
+return t
+.replaceAll("&","&amp;")
+.replaceAll("<","&lt;")
+.replaceAll(">","&gt;");
+
+}
+
+
+
+
+
+
+
+// ==========================
+// PLAYER
+// ==========================
+
+
+function next(){
+
+
+if(engine.generation <
+engine.maxGeneration){
+
+
+engine.generation++;
+
+
+build();
+
+
+}
+
+
+}
+
+
+
+function prev(){
+
+
+if(engine.generation>0){
+
+
+engine.generation--;
+
+
+build();
+
+
+}
+
+}
+
+
+
+function first(){
+
+
+engine.generation=0;
+
+build();
+
+}
+
+
+
+function last(){
+
+
+engine.generation=
+engine.maxGeneration;
+
+build();
+
+}
+
+
+
+
+function play(){
+
+
+if(engine.timer)
+return;
+
+
+
+engine.timer=setInterval(()=>{
+
+
+if(engine.generation >= engine.maxGeneration){
+
+stopPlay();
+
+return;
+
+}
+
+
+
+next();
+
+
+},
+
+Number(
+document
+.getElementById("speed")
+.value
+
+));
+
+
+}
+
+
+
+function stopPlay(){
+
+if(engine.timer){
+
+clearInterval(engine.timer);
+
+engine.timer=null;
+
+}
+
+}
+
+
+
+
+
+function render(){
+
+
+document.getElementById("labelGen")
+.textContent=
+engine.generation;
+
+
+
+document.getElementById("result")
+.textContent=
+toText(engine.root)
+.replace(/\s+/g," ")
+.trim();
+
+
+
+document.getElementById("tree")
+.innerHTML=
+"<ul>"
++
+treeHTML(engine.root)
++
+"</ul>";
+
+
+}
+
+
+
+build();
+
+
+
+</script>
+
+
+</body>
+
+</html>

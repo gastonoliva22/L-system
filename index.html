@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+
+        <title>Generative L-System AST Engine</title>
+
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                height: 100vh;
+                display: flex;
+                font-family: Arial;
+            }
+
+            #tutorialToggle {
+                position: fixed;
+                right: 20px;
+                bottom: 20px;
+                z-index: 2;
+                width: auto;
+                margin: 0;
+                padding: 11px 15px;
+                border: 1px solid #555;
+                border-radius: 22px;
+                background: #1565c0;
+                color: white;
+                cursor: pointer;
+            }
+
+            #tutorial {
+                position: fixed;
+                top: 0;
+                right: 0;
+                z-index: 3;
+                width: min(430px, 92vw);
+                height: 100vh;
+                padding: 24px;
+                overflow: auto;
+                background: white;
+                border-left: 1px solid #bbb;
+                box-shadow: -4px 0 18px #0003;
+                transform: translateX(100%);
+                transition: transform 0.2s ease;
+            }
+
+            #tutorial.open {
+                transform: translateX(0);
+            }
+
+            #tutorialClose {
+                float: right;
+                width: auto;
+                margin: 0;
+                padding: 4px 9px;
+                font-size: 20px;
+                cursor: pointer;
+            }
+
+            #tutorial h2 {
+                margin-top: 24px;
+            }
+
+            #tutorial h3 {
+                margin-top: 20px;
+            }
+
+            #tutorial code {
+                background: #f1f1f1;
+                padding: 2px 4px;
+            }
+
+            #tutorial pre {
+                overflow: auto;
+            }
+
+            #tutorial table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+
+            #tutorial th,
+            #tutorial td {
+                padding: 7px;
+                border: 1px solid #ccc;
+                text-align: left;
+            }
+
+            #panel {
+                width: 420px;
+                background: #eee;
+                padding: 15px;
+                overflow: auto;
+            }
+
+            #main {
+                flex: 1;
+                padding: 20px;
+                overflow: auto;
+            }
+
+            input,
+            textarea,
+            button,
+            select {
+                width: 100%;
+                padding: 8px;
+                margin-top: 8px;
+            }
+
+            textarea {
+                height: 260px;
+            }
+
+            .player {
+                display: flex;
+                gap: 6px;
+            }
+
+            .player button {
+                height: 42px;
+                font-size: 18px;
+                border-radius: 8px;
+                border: 1px solid #888;
+
+                transition:
+                    transform 0.12s,
+                    box-shadow 0.12s;
+            }
+
+            .player button:hover {
+                transform: translateY(-2px);
+            }
+
+            .player button:active {
+                transform: scale(0.9);
+
+                box-shadow: inset 0 0 8px #555;
+            }
+
+            .step {
+                background: #ddd;
+            }
+
+            .play {
+                background: #4caf50;
+                color: white;
+            }
+
+            .stop {
+                background: #e53935;
+                color: white;
+            }
+
+            pre {
+                background: #fafafa;
+                padding: 15px;
+                border: 1px solid #ccc;
+                white-space: pre-wrap;
+            }
+
+            ul {
+                list-style: none;
+            }
+
+            li {
+                margin: 5px;
+            }
+
+            .concept {
+                color: #1565c0;
+                font-weight: bold;
+            }
+
+            .text {
+                color: #555;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="panel">
+            <h2>Generative L-System</h2>
+
+            <label>Axioma</label>
+
+            <input id="axiom" value="[YO] [CAMINO]" />
+
+            <label>Reglas</label>
+
+            <textarea id="rules">
+
+            YO =
+            "yo recuerdo [MEMORIA]"
+
+            MEMORIA =
+            "el perfume [INFANCIA] de los jazmines en [MEMORIA]"
+
+            INFANCIA =
+            "de los veranos en el patio"
+
+            CAMINO =
+            "camino hacia [DESTINO]"
+
+            DESTINO =
+            "el horizonte"
+
+            </textarea>
+
+            <label> Generaciones máximas </label>
+
+            <input id="maxGeneration" type="number" value="8" />
+
+            <div class="player">
+                <button
+                    class="step"
+                    title="Primera generación"
+                    onclick="first()"
+                >
+                    ⏮
+                </button>
+
+                <button
+                    class="step"
+                    title="Generación anterior"
+                    onclick="prev()"
+                >
+                    ◀
+                </button>
+
+                <button
+                    class="play"
+                    title="Reproducir generaciones"
+                    onclick="play()"
+                >
+                    ▶
+                </button>
+
+                <button
+                    class="stop"
+                    title="Detener reproducción"
+                    onclick="stopPlay()"
+                >
+                    ⏹
+                </button>
+
+                <button
+                    class="step"
+                    title="Siguiente generación"
+                    onclick="next()"
+                >
+                    ▶
+                </button>
+
+                <button class="step" title="Última generación" onclick="last()">
+                    ⏭
+                </button>
+            </div>
+
+            <button onclick="reset()">Actualizar</button>
+        </div>
+
+        <div id="main">
+            <h2>
+                Generación:
+                <span id="generation"></span>
+            </h2>
+
+            <h2>Texto generado</h2>
+
+            <pre id="output"></pre>
+
+            <h2>Árbol sintáctico</h2>
+
+            <div id="tree"></div>
+        </div>
+
+        <button id="tutorialToggle" type="button" aria-expanded="false">
+            Tutorial ?
+        </button>
+
+        <aside id="tutorial" aria-label="Tutorial de uso" aria-hidden="true">
+            <button id="tutorialClose" type="button" aria-label="Cerrar tutorial">
+                ×
+            </button>
+            <div id="tutorialContent">
+                <p>Cargando tutorial…</p>
+            </div>
+        </aside>
+
+        <script>
+            // =================================================
+            // MOTOR
+            // =================================================
+
+            const engine = {
+                generation: 0,
+
+                maxGeneration: 8,
+
+                timer: null,
+
+                root: null,
+
+                history: [],
+            };
+
+            // =================================================
+            // PARSER DE REGLAS
+            // =================================================
+
+            let rules = {};
+
+            function parseRules(text) {
+                let result = {};
+
+                let current = null;
+
+                let buffer = "";
+
+                for (let line of text.split("\n")) {
+                    line = line.trim();
+
+                    if (!line) continue;
+
+                    if (line.includes("=")) {
+                        if (current) {
+                            result[current] = parseTemplate(clean(buffer));
+                        }
+
+                        let p = line.split("=");
+
+                        current = p[0].trim();
+
+                        buffer = p.slice(1).join("=").trim();
+                    } else {
+                        buffer += " " + line;
+                    }
+                }
+
+                if (current) {
+                    result[current] = parseTemplate(clean(buffer));
+                }
+
+                return result;
+            }
+
+            function clean(t) {
+                t = t.trim();
+
+                if (t.startsWith('"') && t.endsWith('"')) {
+                    return t.substring(1, t.length - 1);
+                }
+
+                return t;
+            }
+
+            function parseTemplate(text) {
+                let parts = [];
+
+                let regex = /\[([^\]]+)\]/g;
+
+                let last = 0;
+
+                let m;
+
+                while ((m = regex.exec(text))) {
+                    let before = text.substring(last, m.index);
+
+                    if (before) {
+                        parts.push({
+                            type: "text",
+
+                            value: before,
+                        });
+                    }
+
+                    parts.push({
+                        type: "concept",
+
+                        name: m[1].trim(),
+                    });
+
+                    last = regex.lastIndex;
+                }
+
+                let after = text.substring(last);
+
+                if (after) {
+                    parts.push({
+                        type: "text",
+
+                        value: after,
+                    });
+                }
+
+                return parts;
+            }
+
+            // =================================================
+            // CREACION DE AST
+            // =================================================
+
+            function parseAxiom(text) {
+                return {
+                    type: "root",
+
+                    children: parseTemplate(text).map(createNode),
+                };
+            }
+
+            function createNode(part) {
+                if (part.type === "text") {
+                    return {
+                        type: "text",
+
+                        value: part.value,
+
+                        children: [],
+                    };
+                }
+
+                return {
+                    type: "concept",
+
+                    name: part.name,
+
+                    children: [],
+                };
+            }
+
+            // =================================================
+            // EXPANSION DEL AST
+            // =================================================
+
+            function expandNode(node, depth) {
+                if (node.type === "text") return node;
+
+                if (depth <= 0) return node;
+
+                let rule = rules[node.name];
+
+                if (!rule) return node;
+
+                let newNode = {
+                    type: "concept",
+
+                    name: node.name,
+
+                    children: [],
+                };
+
+                for (let part of rule) {
+                    newNode.children.push(createAndExpand(part, depth - 1));
+                }
+
+                return newNode;
+            }
+
+            function createAndExpand(part, depth) {
+                let node = createNode(part);
+
+                return expandNode(node, depth);
+            }
+
+            // =================================================
+            // GENERACIONES
+            // =================================================
+
+            function generate() {
+                engine.root = {
+                    type: "root",
+
+                    children: engine.root.children.map((node) => {
+                        return expandGeneration(node);
+                    }),
+                };
+            }
+
+            function expandGeneration(node) {
+                // terminal
+                if (node.type === "text") {
+                    return node;
+                }
+
+                // si ya fue expandido:
+                // recorremos sus hijos
+
+                if (node.expanded) {
+                    return {
+                        type: "concept",
+
+                        name: node.name,
+
+                        expanded: true,
+
+                        children: node.children.map((child) =>
+                            expandGeneration(child),
+                        ),
+                    };
+                }
+
+                // concepto sin regla
+
+                if (!rules[node.name]) {
+                    return node;
+                }
+
+                // primera expansión
+
+                return {
+                    type: "concept",
+
+                    name: node.name,
+
+                    expanded: true,
+
+                    children: rules[node.name].map((part) => {
+                        return createNode(part);
+                    }),
+                };
+            }
+
+            function reset() {
+                stopPlay();
+
+                rules = parseRules(document.getElementById("rules").value);
+
+                engine.maxGeneration = Number(
+                    document.getElementById("maxGeneration").value,
+                );
+
+                engine.generation = 0;
+
+                engine.root = parseAxiom(
+                    document.getElementById("axiom").value,
+                );
+
+                engine.history = [clone(engine.root)];
+
+                render();
+            }
+
+            function next() {
+                if (engine.generation < engine.maxGeneration) {
+                    generate();
+
+                    engine.generation++;
+
+                    engine.history[engine.generation] = clone(engine.root);
+
+                    render();
+                }
+            }
+
+            function prev() {
+                if (engine.generation > 0) {
+                    engine.generation--;
+
+                    engine.root = clone(engine.history[engine.generation]);
+
+                    render();
+                }
+            }
+
+            function first() {
+                engine.generation = 0;
+
+                engine.root = clone(engine.history[0]);
+
+                render();
+            }
+
+            function last() {
+                while (engine.generation < engine.maxGeneration) {
+                    next();
+                }
+            }
+
+            function play() {
+                if (engine.timer) return;
+
+                engine.timer = setInterval(() => {
+                    if (engine.generation >= engine.maxGeneration) {
+                        stopPlay();
+
+                        return;
+                    }
+
+                    next();
+                }, 800);
+            }
+
+            function stopPlay() {
+                clearInterval(engine.timer);
+
+                engine.timer = null;
+            }
+
+            // =================================================
+            // RENDER
+            // =================================================
+
+            function textOf(node) {
+                if (node.type === "text") return node.value;
+
+                return node.children.map(textOf).join("");
+            }
+
+            function treeHTML(node) {
+                if (node.type === "root") {
+                    return node.children.map(treeHTML).join("");
+                }
+
+                let html = `<li class="${node.type}">`;
+
+                if (node.type === "concept") {
+                    html += "<b>" + node.name + "</b>";
+                } else {
+                    html += node.value.trim();
+                }
+
+                if (node.children && node.children.length) {
+                    html += "<ul>";
+
+                    node.children.forEach((child) => {
+                        html += treeHTML(child);
+                    });
+
+                    html += "</ul>";
+                }
+
+                html += "</li>";
+
+                return html;
+            }
+
+            function clone(obj) {
+                return JSON.parse(JSON.stringify(obj));
+            }
+
+            function escapeHTML(text) {
+                return text
+                    .replaceAll("&", "&amp;")
+                    .replaceAll("<", "&lt;")
+                    .replaceAll(">", "&gt;");
+            }
+
+            function toggleTutorial(open) {
+                const tutorial = document.getElementById("tutorial");
+                const toggle = document.getElementById("tutorialToggle");
+
+                tutorial.classList.toggle("open", open);
+                tutorial.setAttribute("aria-hidden", String(!open));
+                toggle.setAttribute("aria-expanded", String(open));
+            }
+
+            document.getElementById("tutorialToggle").onclick = () =>
+                toggleTutorial(true);
+
+            document.getElementById("tutorialClose").onclick = () =>
+                toggleTutorial(false);
+
+            function inlineMarkdown(text) {
+                return escapeHTML(text)
+                    .replace(/`([^`]+)`/g, "<code>$1</code>")
+                    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+                    .replace(
+                        /\[([^\]]+)\]\(([^)]+)\)/g,
+                        '<a href="$2" target="_blank" rel="noopener">$1</a>',
+                    );
+            }
+
+            function renderMarkdown(markdown) {
+                const lines = markdown.replace(/\r/g, "").split("\n");
+                let html = "";
+                let index = 0;
+
+                while (index < lines.length) {
+                    const line = lines[index];
+
+                    if (!line.trim()) {
+                        index++;
+                        continue;
+                    }
+
+                    const heading = line.match(/^(#{1,3})\s+(.+)/);
+                    if (heading) {
+                        const level = heading[1].length;
+                        html += `<h${level}>${inlineMarkdown(heading[2])}</h${level}>`;
+                        index++;
+                        continue;
+                    }
+
+                    if (line.startsWith("```")) {
+                        const code = [];
+                        index++;
+                        while (index < lines.length && !lines[index].startsWith("```")) {
+                            code.push(lines[index++]);
+                        }
+                        html += `<pre><code>${escapeHTML(code.join("\n"))}</code></pre>`;
+                        index++;
+                        continue;
+                    }
+
+                    if (line.startsWith("|") && /^\|[\s|-]+\|$/.test(lines[index + 1] || "")) {
+                        const rows = [];
+                        while (index < lines.length && lines[index].startsWith("|")) {
+                            rows.push(
+                                lines[index]
+                                    .split("|")
+                                    .slice(1, -1)
+                                    .map((cell) => cell.trim()),
+                            );
+                            index++;
+                        }
+                        const header = rows.shift();
+                        rows.shift();
+                        html += `<table><thead><tr>${header.map((cell) => `<th>${inlineMarkdown(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${inlineMarkdown(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+                        continue;
+                    }
+
+                    const list = line.match(/^(?:-|\d+\.)\s+(.+)/);
+                    if (list) {
+                        const ordered = /^\d+\./.test(line);
+                        const tag = ordered ? "ol" : "ul";
+                        const items = [];
+                        while (index < lines.length) {
+                            const item = lines[index].match(
+                                ordered ? /^\d+\.\s+(.+)/ : /^-\s+(.+)/,
+                            );
+                            if (!item) break;
+                            items.push(`<li>${inlineMarkdown(item[1])}</li>`);
+                            index++;
+                        }
+                        html += `<${tag}>${items.join("")}</${tag}>`;
+                        continue;
+                    }
+
+                    const paragraph = [];
+                    while (index < lines.length && lines[index].trim()) {
+                        if (index > 0 && /^(#{1,3})\s+|^```|^(?:-|\d+\.)\s+/.test(lines[index])) break;
+                        paragraph.push(lines[index++]);
+                    }
+                    html += `<p>${inlineMarkdown(paragraph.join(" "))}</p>`;
+                }
+
+                return html;
+            }
+
+            async function loadTutorial() {
+                const content = document.getElementById("tutorialContent");
+
+                try {
+                    const response = await fetch("README.md");
+                    if (!response.ok) throw new Error("No se encontró README.md");
+                    content.innerHTML = renderMarkdown(await response.text());
+                } catch (error) {
+                    content.innerHTML =
+                        "<h1>Tutorial no disponible</h1><p>Este panel carga el archivo README.md. Publicá la página en un servidor, como GitHub Pages, para visualizarlo.</p>";
+                }
+            }
+
+            loadTutorial();
+
+            function render() {
+                document.getElementById("generation").textContent =
+                    engine.generation;
+
+                document.getElementById("output").textContent = textOf(
+                    engine.root,
+                )
+                    .replace(/\s+/g, " ")
+                    .trim();
+
+                document.getElementById("tree").innerHTML =
+                    "<ul>" + treeHTML(engine.root) + "</ul>";
+            }
+
+            reset();
+        </script>
+    </body>
+</html>

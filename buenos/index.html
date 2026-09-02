@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>L-System Explorer</title>
+
+<style>
+
+*{
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+    font-family:Arial,sans-serif;
+}
+
+body{
+    height:100vh;
+    display:flex;
+    overflow:hidden;
+}
+
+#leftPanel{
+    width:340px;
+    background:#f5f5f5;
+    border-right:1px solid #ccc;
+    padding:15px;
+    overflow:auto;
+}
+
+#leftPanel h2{
+    margin-bottom:15px;
+}
+
+.group{
+    margin-bottom:15px;
+}
+
+label{
+    display:block;
+    margin-bottom:4px;
+    font-size:14px;
+    font-weight:bold;
+}
+
+input, textarea{
+    width:100%;
+    padding:8px;
+}
+
+textarea{
+    resize:vertical;
+    min-height:120px;
+}
+
+button{
+    padding:10px;
+    width:100%;
+    margin-top:8px;
+    cursor:pointer;
+}
+
+#stats{
+    margin-top:10px;
+    font-size:13px;
+    color:#444;
+}
+
+#canvasContainer{
+    flex:1;
+    position:relative;
+    overflow:hidden;
+}
+
+canvas{
+    background:white;
+    display:block;
+}
+
+</style>
+</head>
+<body>
+
+<div id="leftPanel">
+
+    <h2>L-System Explorer</h2>
+
+    <div class="group">
+        <label>Axioma</label>
+        <input id="axiom" value="X">
+    </div>
+
+    <div class="group">
+        <label>Reglas</label>
+<textarea id="rules">
+X=F[+X][-X]FX
+F=FF
+</textarea>
+    </div>
+
+    <div class="group">
+        <label>Iteraciones</label>
+        <input id="iterations" type="number" min="0" max="10" value="6">
+    </div>
+
+    <div class="group">
+        <label>Ángulo (grados)</label>
+        <input id="angle" type="number" value="25">
+    </div>
+
+    <div class="group">
+        <label>Longitud segmento</label>
+        <input id="step" type="number" value="5">
+    </div>
+
+    <button id="generateBtn">
+        Generar
+    </button>
+
+    <button id="exportBtn">
+        Exportar PNG
+    </button>
+
+    <div id="stats"></div>
+
+</div>
+
+<div id="canvasContainer">
+    <canvas id="canvas"></canvas>
+</div>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resizeCanvas(){
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+}
+
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+let zoom = 1;
+let offsetX = 0;
+let offsetY = 0;
+
+let dragging = false;
+let lastX = 0;
+let lastY = 0;
+
+canvas.addEventListener("mousedown", e=>{
+    dragging=true;
+    lastX=e.clientX;
+    lastY=e.clientY;
+});
+
+window.addEventListener("mouseup", ()=>{
+    dragging=false;
+});
+
+window.addEventListener("mousemove", e=>{
+    if(!dragging) return;
+
+    offsetX += e.clientX-lastX;
+    offsetY += e.clientY-lastY;
+
+    lastX=e.clientX;
+    lastY=e.clientY;
+
+    redraw();
+});
+
+canvas.addEventListener("wheel", e=>{
+
+    e.preventDefault();
+
+    if(e.deltaY<0)
+        zoom*=1.1;
+    else
+        zoom/=1.1;
+
+    redraw();
+
+});
+
+let currentString = "";
+
+function parseRules(text){
+
+    const rules={};
+
+    text.split("\n").forEach(line=>{
+
+        line=line.trim();
+
+        if(!line) return;
+
+        const parts=line.split("=");
+
+        if(parts.length!==2) return;
+
+        rules[parts[0].trim()] = parts[1].trim();
+
+    });
+
+    return rules;
+}
+
+function expand(axiom,rules,iterations){
+
+    let current=axiom;
+
+    for(let i=0;i<iterations;i++){
+
+        let next="";
+
+        for(const ch of current){
+
+            next += rules[ch] || ch;
+
+        }
+
+        current=next;
+    }
+
+    return current;
+}
+
+function drawLSystem(str, angleDeg, step){
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    ctx.save();
+
+    ctx.translate(
+        canvas.width/2 + offsetX,
+        canvas.height + offsetY
+    );
+
+    ctx.scale(zoom,zoom);
+
+    let x=0;
+    let y=0;
+
+    let angle=-90*Math.PI/180;
+
+    const angleStep=angleDeg*Math.PI/180;
+
+    const stack=[];
+
+    ctx.beginPath();
+
+    for(const ch of str){
+
+        switch(ch){
+
+            case "F":
+
+                const nx=x+Math.cos(angle)*step;
+                const ny=y+Math.sin(angle)*step;
+
+                ctx.moveTo(x,y);
+                ctx.lineTo(nx,ny);
+
+                x=nx;
+                y=ny;
+
+                break;
+
+            case "G":
+
+                x+=Math.cos(angle)*step;
+                y+=Math.sin(angle)*step;
+
+                break;
+
+            case "+":
+                angle+=angleStep;
+                break;
+
+            case "-":
+                angle-=angleStep;
+                break;
+
+            case "[":
+                stack.push({
+                    x,y,angle
+                });
+                break;
+
+            case "]":
+
+                const state=stack.pop();
+
+                if(state){
+
+                    x=state.x;
+                    y=state.y;
+                    angle=state.angle;
+
+                    ctx.moveTo(x,y);
+                }
+
+                break;
+        }
+    }
+
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function redraw(){
+
+    if(!currentString) return;
+
+    drawLSystem(
+        currentString,
+        Number(document.getElementById("angle").value),
+        Number(document.getElementById("step").value)
+    );
+}
+
+function generate(){
+
+    const axiom =
+        document.getElementById("axiom").value;
+
+    const rules =
+        parseRules(
+            document.getElementById("rules").value
+        );
+
+    const iterations =
+        Number(
+            document.getElementById("iterations").value
+        );
+
+    currentString =
+        expand(
+            axiom,
+            rules,
+            iterations
+        );
+
+    document.getElementById("stats").innerHTML =
+        "Longitud cadena: "
+        + currentString.length.toLocaleString();
+
+    redraw();
+}
+
+document
+.getElementById("generateBtn")
+.addEventListener("click",generate);
+
+document
+.getElementById("exportBtn")
+.addEventListener("click",()=>{
+
+    const link=document.createElement("a");
+
+    link.download="lsystem.png";
+    link.href=canvas.toDataURL();
+
+    link.click();
+
+});
+
+generate();
+
+</script>
+
+</body>
+</html>

@@ -90,16 +90,30 @@
                 text-align: left;
             }
 
+            .developer {
+                position: fixed;
+                right: 0;
+                bottom: 0;
+                left: 0;
+                z-index: 1;
+                margin: 0;
+                padding: 14px 20px;
+                border-top: 1px solid #ddd;
+                background: white;
+                color: #666;
+                font-size: 14px;
+            }
+
             #panel {
                 width: 420px;
                 background: #eee;
-                padding: 15px;
+                padding: 15px 15px 68px;
                 overflow: auto;
             }
 
             #main {
                 flex: 1;
-                padding: 20px;
+                padding: 20px 20px 68px;
                 overflow: auto;
             }
 
@@ -277,6 +291,11 @@
             <h2>Árbol sintáctico</h2>
 
             <div id="tree"></div>
+
+            <footer class="developer">
+                Asnotragico ·
+                <a href="mailto:asnotragico@gmail.com">asnotragico@gmail.com</a>
+            </footer>
         </div>
 
         <button id="tutorialToggle" type="button" aria-expanded="false">
